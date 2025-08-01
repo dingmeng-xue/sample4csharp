@@ -17,18 +17,18 @@ namespace azure_storage_track2
 
             _tenantId = configuration["tenant"];
             _subscriptionId = configuration["subscription"];
-            _resouceGroupName = configuration["resource-group"];
+            _resourceNamePrefix = configuration["resource-prefix"];
             _location = configuration["location"];
         }
 
         private String? _tenantId;
         private String? _subscriptionId;
-        private String? _resouceGroupName;
+        private String? _resourceNamePrefix;
         private String? _location;
 
         public String? TenantId => _tenantId;
         public String? SubscriptionId => _subscriptionId;
-        public String? ResourceGroupName => _resouceGroupName;
+        public String? ResourceNamePrefix => _resourceNamePrefix;
         public String? Location => _location;
     }
 }

@@ -1,6 +1,6 @@
 {
-  "tenant": "",
-  "subscription": "",
-  "location": "",
-  "resource-group": ""
+  "tenant": "6d7cf3f8-2b9f-45cb-8c72-1ba2917949b2",
+  "subscription": "28670461-a4b5-4285-9528-df8c07001814",
+  "location": "westus2",
+  "resource-prefix": "dixuetest"
 }
