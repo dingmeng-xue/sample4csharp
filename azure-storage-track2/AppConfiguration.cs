@@ -15,20 +15,20 @@ namespace azure_storage_track2
                 .AddJsonFile("AppConfiguration.json")
                 .Build();
 
-            _tenantId = configuration["tenant"];
-            _subscriptionId = configuration["subscription"];
-            _resourceNamePrefix = configuration["resource-prefix"];
-            _location = configuration["location"];
+            _tenantId = configuration["tenant"] ?? string.Empty;
+            _subscriptionId = configuration["subscription"] ?? string.Empty;
+            _resourceNamePrefix = configuration["resource-prefix"] ?? string.Empty;
+            _location = configuration["location"] ?? string.Empty;
         }
 
-        private String? _tenantId;
-        private String? _subscriptionId;
-        private String? _resourceNamePrefix;
-        private String? _location;
+        private String _tenantId;
+        private String _subscriptionId;
+        private String _resourceNamePrefix;
+        private String _location;
 
-        public String? TenantId => _tenantId;
-        public String? SubscriptionId => _subscriptionId;
-        public String? ResourceNamePrefix => _resourceNamePrefix;
-        public String? Location => _location;
+        public String TenantId => _tenantId;
+        public String SubscriptionId => _subscriptionId;
+        public String ResourceNamePrefix => _resourceNamePrefix;
+        public String Location => _location;
     }
 }
