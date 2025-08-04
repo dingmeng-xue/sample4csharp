@@ -3,6 +3,10 @@
 var platform = new Platform(AppConfiguration.Instance);
 platform.Initialize();
 
+var cabinet = platform.CreateCabinet("cabinet1");
+
+//platform.DeleteCabinet("cabinet1");
+
 //var keys = storage.GetKeys().ToList();
 //var key = keys[0].Value;
 

@@ -2,11 +2,11 @@
 {
     public class Cabinet
     {
-        public String name { get; set; }
+        public String Name { get; set; }
 
-        public String? description { get; set; }
+        public String? Description { get; set; }
 
-        public String accessKey { get; protected set; }
+        public String AccessUri { get; set; }
 
     }
 }

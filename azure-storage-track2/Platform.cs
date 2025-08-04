@@ -7,12 +7,9 @@ using Azure.ResourceManager.KeyVault.Models;
 using Azure.ResourceManager.Resources;
 using Azure.ResourceManager.Storage;
 using Azure.ResourceManager.Storage.Models;
-using Microsoft.Identity.Client.Extensions.Msal;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Azure.Security.KeyVault.Secrets;
+using Azure.Storage.Blobs;
+using Azure.Storage.Sas;
 
 namespace azure_storage_track2
 {
@@ -137,6 +134,28 @@ namespace azure_storage_track2
         }
 
         public Cabinet CreateCabinet(String name)
+        {
+            var blobServiceClient = new BlobServiceClient(
+                new Uri($"https://{storageName}.blob.core.windows.net"), new DefaultAzureCredential());
+            BlobContainerClient containerClient = blobServiceClient.CreateBlobContainer(name);
+            var uri = containerClient.GenerateSasUri(BlobContainerSasPermissions.Read, DateTimeOffset.Now.AddDays(1));
+
+
+            var secretClient = new SecretClient(new Uri($"https://{kvName}.vault.azure.net"), new DefaultAzureCredential());
+            secretClient.SetSecret(name, uri.ToString());
+
+            var Cabinet = new Cabinet();
+            Cabinet.Name = name;
+            Cabinet.AccessUri = uri.ToString();
+
+            return Cabinet;
+        }
+
+        public void DeleteCabinet(String name) {
+            
+        }
+
+        public Cabinet GetCabinet(String name)
         {
             return null;
         }
