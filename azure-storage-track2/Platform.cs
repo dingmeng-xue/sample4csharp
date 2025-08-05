@@ -10,6 +10,7 @@ using Azure.ResourceManager.Storage.Models;
 using Azure.Security.KeyVault.Secrets;
 using Azure.Storage.Blobs;
 using Azure.Storage.Sas;
+using System;
 
 namespace azure_storage_track2
 {
@@ -144,20 +145,36 @@ namespace azure_storage_track2
             var secretClient = new SecretClient(new Uri($"https://{kvName}.vault.azure.net"), new DefaultAzureCredential());
             secretClient.SetSecret(name, uri.ToString());
 
-            var Cabinet = new Cabinet();
-            Cabinet.Name = name;
-            Cabinet.AccessUri = uri.ToString();
+            var cabinet = new Cabinet();
+            cabinet.Name = name;
+            cabinet.AccessUri = uri.ToString();
 
-            return Cabinet;
+            return cabinet;
         }
 
         public void DeleteCabinet(String name) {
-            
+            var blobServiceClient = new BlobServiceClient(
+                new Uri($"https://{storageName}.blob.core.windows.net"), new DefaultAzureCredential());
+            blobServiceClient.DeleteBlobContainer(name);
         }
 
         public Cabinet GetCabinet(String name)
         {
-            return null;
+            var blobServiceClient = new BlobServiceClient(
+                new Uri($"https://{storageName}.blob.core.windows.net"), new DefaultAzureCredential());
+            BlobContainerClient containerClient = blobServiceClient.GetBlobContainerClient(name);
+
+            if(!containerClient.Exists())
+            {
+                return null;
+            }
+
+            var secretClient = new SecretClient(new Uri($"https://{kvName}.vault.azure.net"), new DefaultAzureCredential());
+            KeyVaultSecret secret = secretClient.GetSecret(name).Value;
+            var cabinet = new Cabinet();
+            cabinet.Name = name;
+            cabinet.AccessUri = secret.Value;
+            return cabinet;
         }
     }
 }
