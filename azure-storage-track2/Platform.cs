@@ -33,15 +33,13 @@ namespace azure_storage_track2
             location = AppConfiguration.Instance.Location;
         }
 
-        private ArmClient client;
-
         private StorageAccountResource storageAccountResource;
         private KeyVaultResource keyVaultResource;
 
         public void Initialize() {
             Console.WriteLine($"Login to Azure tenant={AppConfiguration.Instance.TenantId} ...");
 
-            client = new ArmClient(new DefaultAzureCredential(new DefaultAzureCredentialOptions()
+            ArmClient client = new ArmClient(new DefaultAzureCredential(new DefaultAzureCredentialOptions()
             {
                 TenantId = AppConfiguration.Instance.TenantId
             }), AppConfiguration.Instance.SubscriptionId);

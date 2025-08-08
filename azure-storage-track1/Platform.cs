@@ -1,14 +1,13 @@
-﻿using Azure;
-using Azure.Core;
+﻿using Microsoft.Azure.Management.KeyVault;
+using KeyVaultModels = Microsoft.Azure.Management.KeyVault.Models;
 using Microsoft.Azure.Management.ResourceManager;
 using Microsoft.Azure.Management.ResourceManager.Models;
+using Microsoft.Azure.Management.Storage;
+using Microsoft.Azure.Management.Storage.Models;
 using Microsoft.Rest;
 using Microsoft.Rest.Azure;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using StorageModels = Microsoft.Azure.Management.Storage.Models;
+using Microsoft.Azure.Management.KeyVault.Models;
 
 namespace azure_storage_track1
 {
@@ -30,6 +29,9 @@ namespace azure_storage_track1
             storageName = AppConfiguration.Instance.ResourceNamePrefix + "sa";
             location = AppConfiguration.Instance.Location;
         }
+
+        private StorageAccount storageAccount;
+        private Vault keyVault;
         public void Initialize()
         {
             Console.WriteLine($"Login to Azure tenant={AppConfiguration.Instance.TenantId} ...");
@@ -44,6 +46,9 @@ namespace azure_storage_track1
             Console.WriteLine($"Selected subscription {sub.DisplayName}({AppConfiguration.Instance.SubscriptionId})");
 
             ResourceGroup rg = initializeResourceGroup(resourceClient);
+            storageAccount = initializeStorageAccount(resourceClient, rg);
+            keyVault = initializeKeyVault(resourceClient, rg);
+
         }
 
         private ResourceGroup initializeResourceGroup(ResourceManagementClient client)
@@ -72,6 +77,105 @@ namespace azure_storage_track1
                 Console.WriteLine($"Created resource group {rgName}");
             }
             return rg;
+        }
+
+        private StorageAccount initializeStorageAccount(ResourceManagementClient client, ResourceGroup rg)
+        {
+            Console.WriteLine($"Checking storage account {storageName} ...");
+
+            // Create StorageManagementClient
+            var credentials = new TokenCredentials(new TokenCredentialProvider());
+            var storageClient = new StorageManagementClient(credentials)
+            {
+                SubscriptionId = AppConfiguration.Instance.SubscriptionId
+            };
+
+            StorageAccount storageAccount = null;
+            try
+            {
+                storageAccount = storageClient.StorageAccounts.GetProperties(rg.Name, storageName);
+                Console.WriteLine($"Storage account {storageName} already exists.");
+            }
+            catch (CloudException e)
+            {
+                if (e?.Body?.Code != "ResourceNotFound")
+                {
+                    throw;
+                }
+            }
+
+            if (storageAccount == null)
+            {
+                Console.WriteLine($"Creating storage account {storageName} ...");
+                var parameters = new StorageAccountCreateParameters
+                {
+                    Location = location,
+                    Kind = Kind.StorageV2,
+                    Sku = new StorageModels.Sku(StorageModels.SkuName.StandardLRS)
+                };
+
+                storageAccount = storageClient.StorageAccounts.Create(rg.Name, storageName, parameters);
+                Console.WriteLine($"Created storage account {storageName}.");
+            }
+            return storageAccount;
+        }
+
+        private Vault initializeKeyVault(ResourceManagementClient client, ResourceGroup rg)
+        {
+            Console.WriteLine($"Checking key vault {kvName} ...");
+
+            // Create KeyVaultManagementClient
+            var credentials = new TokenCredentials(new TokenCredentialProvider());
+            var keyVaultClient = new KeyVaultManagementClient(credentials)
+            {
+                SubscriptionId = AppConfiguration.Instance.SubscriptionId
+            };
+
+            Vault vault = null;
+            try
+            {
+                vault = keyVaultClient.Vaults.Get(rg.Name, kvName);
+                Console.WriteLine($"Key vault {kvName} already exists.");
+            }
+            catch (CloudException e)
+            {
+                if (e?.Body?.Code != "ResourceNotFound")
+                {
+                    throw;
+                }
+            }
+
+            if (vault == null)
+            {
+                Console.WriteLine($"Creating key vault {kvName} ...");
+                var parameters = new VaultCreateOrUpdateParameters
+                {
+                    Location = location,
+                    Properties = new VaultProperties
+                    {
+                        TenantId = Guid.Parse(AppConfiguration.Instance.TenantId),
+                        Sku = new KeyVaultModels.Sku(KeyVaultModels.SkuName.Standard),
+                        EnableRbacAuthorization = true,
+                        EnableSoftDelete = false,
+                        EnabledForDeployment = false,
+                        EnabledForDiskEncryption = false,
+                        EnabledForTemplateDeployment = false
+                    }
+                };
+
+                vault = keyVaultClient.Vaults.CreateOrUpdate(rg.Name, kvName, parameters);
+                Console.WriteLine($"Created key vault {kvName}.");
+            }
+            return vault;
+        }
+
+        public Cabinet CreateCabinet(String name)
+        {
+            var cabinet = new Cabinet();
+            cabinet.Name = name;
+            cabinet.AccessUri = null;
+
+            return cabinet;
         }
     }
 }

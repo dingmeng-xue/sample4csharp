@@ -10,7 +10,9 @@
 
   <ItemGroup>
     <PackageReference Include="Azure.Identity" Version="1.14.2" />
+    <PackageReference Include="Microsoft.Azure.Management.KeyVault" Version="3.1.0" />
     <PackageReference Include="Microsoft.Azure.Management.ResourceManager" Version="3.17.4-preview" />
+    <PackageReference Include="Microsoft.Azure.Management.Storage" Version="25.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.7" />
   </ItemGroup>
 
