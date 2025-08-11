@@ -8,6 +8,9 @@ using Microsoft.Rest;
 using Microsoft.Rest.Azure;
 using StorageModels = Microsoft.Azure.Management.Storage.Models;
 using Microsoft.Azure.Management.KeyVault.Models;
+using Microsoft.Azure.Storage.Blob;
+using Microsoft.Azure.Storage.Auth;
+using System.Threading.Tasks;
 
 namespace azure_storage_track1
 {
@@ -169,11 +172,25 @@ namespace azure_storage_track1
             return vault;
         }
 
-        public Cabinet CreateCabinet(String name)
+        public async Task<Cabinet> CreateCabinet(String name)
         {
+
+            CloudBlobClient client = new CloudBlobClient(
+                new Uri($"https://{storageName}.blob.core.windows.net/"),
+                new StorageCredentials(storageName, storageAccount.PrimaryEndpoints.Blob));
+
+            CloudBlobContainer container = client.GetContainerReference(name);
+            await container.CreateIfNotExistsAsync();
+
+            var uri = container.GetSharedAccessSignature(new SharedAccessBlobPolicy
+            {
+                Permissions = SharedAccessBlobPermissions.Read,
+                SharedAccessExpiryTime = DateTimeOffset.UtcNow.AddDays(1)
+            });
+
             var cabinet = new Cabinet();
             cabinet.Name = name;
-            cabinet.AccessUri = null;
+            cabinet.AccessUri = uri;
 
             return cabinet;
         }

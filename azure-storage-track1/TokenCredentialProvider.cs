@@ -25,6 +25,16 @@ namespace azure_storage_track1
             this.scopes = scopes;
         }
 
+        public TokenCredentialProvider(string[] scopes)
+        {
+            tokenCredential = new DefaultAzureCredential(new DefaultAzureCredentialOptions()
+            {
+                TenantId = AppConfiguration.Instance.TenantId
+            });
+            this.scopes = scopes;
+        }
+
+
         public async Task<AuthenticationHeaderValue> GetAuthenticationHeaderAsync(CancellationToken cancellationToken)
         {
             var accessToken = await tokenCredential.GetTokenAsync(new TokenRequestContext(scopes), cancellationToken);

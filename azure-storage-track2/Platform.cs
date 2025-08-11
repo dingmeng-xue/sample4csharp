@@ -39,10 +39,7 @@ namespace azure_storage_track2
         public void Initialize() {
             Console.WriteLine($"Login to Azure tenant={AppConfiguration.Instance.TenantId} ...");
 
-            ArmClient client = new ArmClient(new DefaultAzureCredential(new DefaultAzureCredentialOptions()
-            {
-                TenantId = AppConfiguration.Instance.TenantId
-            }), AppConfiguration.Instance.SubscriptionId);
+            ArmClient client = new ArmClient(new AppTokenCredential(), AppConfiguration.Instance.SubscriptionId);
 
             SubscriptionResource sub = client.GetSubscriptions().Get(AppConfiguration.Instance.SubscriptionId);
             Console.WriteLine($"Selected subscription {sub.Data.DisplayName}({AppConfiguration.Instance.SubscriptionId})");
@@ -134,13 +131,26 @@ namespace azure_storage_track2
 
         public Cabinet CreateCabinet(String name)
         {
+            var key = storageAccountResource.GetKeys().First().Value;
+
             var blobServiceClient = new BlobServiceClient(
-                new Uri($"https://{storageName}.blob.core.windows.net"), new DefaultAzureCredential());
-            BlobContainerClient containerClient = blobServiceClient.CreateBlobContainer(name);
+                new Uri($"https://{storageName}.blob.core.windows.net"), new AppTokenCredential());
+            BlobContainerClient containerClient = blobServiceClient.GetBlobContainerClient(name);
+            containerClient.CreateIfNotExists();
+
+            BlobContainerSasPermissions permissions = BlobContainerSasPermissions.Read;
+            DateTimeOffset expiresOn = DateTimeOffset.UtcNow.AddHours(+1);
+            BlobSasBuilder sasBuilder = new BlobSasBuilder(permissions, expiresOn)
+            {
+                BlobContainerName = name,
+            };
+            sasBuilder.ToSasQueryParameters(new StorageSharedKeyCredential(storageName, key));
+
+            containerClient.GenerateUserDelegationSasUri(permissions, DateTimeOffset.Now.AddDays(1));
             var uri = containerClient.GenerateSasUri(BlobContainerSasPermissions.Read, DateTimeOffset.Now.AddDays(1));
 
 
-            var secretClient = new SecretClient(new Uri($"https://{kvName}.vault.azure.net"), new DefaultAzureCredential());
+            var secretClient = new SecretClient(new Uri($"https://{kvName}.vault.azure.net"), new AppTokenCredential());
             secretClient.SetSecret(name, uri.ToString());
 
             var cabinet = new Cabinet();
@@ -152,14 +162,14 @@ namespace azure_storage_track2
 
         public void DeleteCabinet(String name) {
             var blobServiceClient = new BlobServiceClient(
-                new Uri($"https://{storageName}.blob.core.windows.net"), new DefaultAzureCredential());
+                new Uri($"https://{storageName}.blob.core.windows.net"), new AppTokenCredential());
             blobServiceClient.DeleteBlobContainer(name);
         }
 
         public Cabinet GetCabinet(String name)
         {
             var blobServiceClient = new BlobServiceClient(
-                new Uri($"https://{storageName}.blob.core.windows.net"), new DefaultAzureCredential());
+                new Uri($"https://{storageName}.blob.core.windows.net"), new AppTokenCredential());
             BlobContainerClient containerClient = blobServiceClient.GetBlobContainerClient(name);
 
             if(!containerClient.Exists())
@@ -167,7 +177,7 @@ namespace azure_storage_track2
                 return null;
             }
 
-            var secretClient = new SecretClient(new Uri($"https://{kvName}.vault.azure.net"), new DefaultAzureCredential());
+            var secretClient = new SecretClient(new Uri($"https://{kvName}.vault.azure.net"), new AppTokenCredential());
             KeyVaultSecret secret = secretClient.GetSecret(name).Value;
             var cabinet = new Cabinet();
             cabinet.Name = name;

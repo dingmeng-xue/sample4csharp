@@ -3,8 +3,8 @@
 var platform = new Platform(AppConfiguration.Instance);
 platform.Initialize();
 
-//var cabinet = platform.CreateCabinet("cabinet1");
-var cabinet = platform.GetCabinet("cabinet1");
+var cabinet = platform.CreateCabinet("cabinet1");
+cabinet = platform.GetCabinet("cabinet1");
 
 Console.WriteLine($"Cabinet {cabinet.Name} created with access URI: {cabinet.AccessUri}");
 
