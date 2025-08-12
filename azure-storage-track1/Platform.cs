@@ -1,16 +1,20 @@
-﻿using Microsoft.Azure.Management.KeyVault;
-using KeyVaultModels = Microsoft.Azure.Management.KeyVault.Models;
+﻿using Microsoft.Azure.KeyVault;
+using Microsoft.Azure.Management.Authorization;
+using Microsoft.Azure.Management.KeyVault;
+using Microsoft.Azure.Management.KeyVault.Models;
 using Microsoft.Azure.Management.ResourceManager;
 using Microsoft.Azure.Management.ResourceManager.Models;
 using Microsoft.Azure.Management.Storage;
 using Microsoft.Azure.Management.Storage.Models;
+using Microsoft.Azure.Storage.Auth;
+using Microsoft.Azure.Storage.Blob;
 using Microsoft.Rest;
 using Microsoft.Rest.Azure;
-using StorageModels = Microsoft.Azure.Management.Storage.Models;
-using Microsoft.Azure.Management.KeyVault.Models;
-using Microsoft.Azure.Storage.Blob;
-using Microsoft.Azure.Storage.Auth;
 using System.Threading.Tasks;
+using static Microsoft.Azure.KeyVault.KeyVaultClient;
+using AuthorizationModels = Microsoft.Azure.Management.Authorization.Models;
+using KeyVaultModels = Microsoft.Azure.Management.KeyVault.Models;
+using StorageModels = Microsoft.Azure.Management.Storage.Models;
 
 namespace azure_storage_track1
 {
@@ -35,22 +39,21 @@ namespace azure_storage_track1
 
         private StorageAccount storageAccount;
         private Vault keyVault;
+
         public void Initialize()
         {
             Console.WriteLine($"Login to Azure tenant={AppConfiguration.Instance.TenantId} ...");
 
-            var credentials = new TokenCredentials(new TokenCredentialProvider());
+            SubscriptionClient subscriptionClient = new SubscriptionClient(new AppTokenCredential());
 
-            SubscriptionClient subscriptionClient = new SubscriptionClient(credentials);
             Subscription sub = subscriptionClient.Subscriptions.Get(AppConfiguration.Instance.SubscriptionId);
-
-            ResourceManagementClient resourceClient = new ResourceManagementClient(credentials);
+            ResourceManagementClient resourceClient = new ResourceManagementClient(new AppTokenCredential());
             resourceClient.SubscriptionId = AppConfiguration.Instance.SubscriptionId;
             Console.WriteLine($"Selected subscription {sub.DisplayName}({AppConfiguration.Instance.SubscriptionId})");
 
             ResourceGroup rg = initializeResourceGroup(resourceClient);
-            storageAccount = initializeStorageAccount(resourceClient, rg);
-            keyVault = initializeKeyVault(resourceClient, rg);
+            storageAccount = initializeStorageAccount(rg);
+            keyVault = initializeKeyVault(rg);
 
         }
 
@@ -82,13 +85,11 @@ namespace azure_storage_track1
             return rg;
         }
 
-        private StorageAccount initializeStorageAccount(ResourceManagementClient client, ResourceGroup rg)
+        private StorageAccount initializeStorageAccount(ResourceGroup rg)
         {
             Console.WriteLine($"Checking storage account {storageName} ...");
 
-            // Create StorageManagementClient
-            var credentials = new TokenCredentials(new TokenCredentialProvider());
-            var storageClient = new StorageManagementClient(credentials)
+            var storageClient = new StorageManagementClient(new AppTokenCredential())
             {
                 SubscriptionId = AppConfiguration.Instance.SubscriptionId
             };
@@ -123,21 +124,19 @@ namespace azure_storage_track1
             return storageAccount;
         }
 
-        private Vault initializeKeyVault(ResourceManagementClient client, ResourceGroup rg)
+        private Vault initializeKeyVault(ResourceGroup rg)
         {
             Console.WriteLine($"Checking key vault {kvName} ...");
 
-            // Create KeyVaultManagementClient
-            var credentials = new TokenCredentials(new TokenCredentialProvider());
-            var keyVaultClient = new KeyVaultManagementClient(credentials)
+            var keyVaultClient = new KeyVaultManagementClient(new AppTokenCredential())
             {
                 SubscriptionId = AppConfiguration.Instance.SubscriptionId
             };
 
-            Vault vault = null;
+            Vault keyvault = null;
             try
             {
-                vault = keyVaultClient.Vaults.Get(rg.Name, kvName);
+                keyvault = keyVaultClient.Vaults.Get(rg.Name, kvName);
                 Console.WriteLine($"Key vault {kvName} already exists.");
             }
             catch (CloudException e)
@@ -148,7 +147,7 @@ namespace azure_storage_track1
                 }
             }
 
-            if (vault == null)
+            if (keyvault == null)
             {
                 Console.WriteLine($"Creating key vault {kvName} ...");
                 var parameters = new VaultCreateOrUpdateParameters
@@ -166,21 +165,39 @@ namespace azure_storage_track1
                     }
                 };
 
-                vault = keyVaultClient.Vaults.CreateOrUpdate(rg.Name, kvName, parameters);
+                keyvault = keyVaultClient.Vaults.CreateOrUpdate(rg.Name, kvName, parameters);
                 Console.WriteLine($"Created key vault {kvName}.");
+
+                AuthorizationManagementClient authClient = new AuthorizationManagementClient(new AppTokenCredential());
+                var roleAssignmentParameters = new AuthorizationModels.RoleAssignmentCreateParameters
+                {
+                    RoleDefinitionId = "/providers/Microsoft.Authorization/roleDefinitions/00482a5a-887f-4fb3-b363-3b7fe8e74483",
+                    PrincipalId = new TokenCredentialProvider().GetCurrentPrincipalOid()
+                };
+                authClient.RoleAssignments.Create(
+                    keyvault.Id,
+                    Guid.NewGuid().ToString(),
+                    roleAssignmentParameters);
+
             }
-            return vault;
+            return keyvault;
         }
 
-        public async Task<Cabinet> CreateCabinet(String name)
+        public Cabinet CreateCabinet(String name)
         {
+            var storageClient = new StorageManagementClient(new AppTokenCredential())
+            {
+                SubscriptionId = AppConfiguration.Instance.SubscriptionId
+            };
+
+            var key = storageClient.StorageAccounts.ListKeys(rgName, storageName).Keys.First();
 
             CloudBlobClient client = new CloudBlobClient(
                 new Uri($"https://{storageName}.blob.core.windows.net/"),
-                new StorageCredentials(storageName, storageAccount.PrimaryEndpoints.Blob));
+                new StorageCredentials(storageName, key.Value));
 
             CloudBlobContainer container = client.GetContainerReference(name);
-            await container.CreateIfNotExistsAsync();
+            container.CreateIfNotExistsAsync();
 
             var uri = container.GetSharedAccessSignature(new SharedAccessBlobPolicy
             {
@@ -188,10 +205,57 @@ namespace azure_storage_track1
                 SharedAccessExpiryTime = DateTimeOffset.UtcNow.AddDays(1)
             });
 
+            var callback = new AuthenticationCallback(async (authority, resource, scope) =>
+            {
+                var credential = new TokenCredentialProvider().TokenCredential.GetToken(
+                    new Azure.Core.TokenRequestContext(new[] { "https://vault.azure.net/.default" }),
+                    new CancellationToken());
+                return credential.Token;
+            });
+            KeyVaultClient keyVaultClient = new KeyVaultClient(callback);
+            var secret = keyVaultClient.SetSecretAsync($"https://{kvName}.vault.azure.net", name, uri);
             var cabinet = new Cabinet();
             cabinet.Name = name;
             cabinet.AccessUri = uri;
 
+            return cabinet;
+        }
+
+        public Cabinet? GetCabinet(String name)
+        {
+            var storageClient = new StorageManagementClient(new AppTokenCredential())
+            {
+                SubscriptionId = AppConfiguration.Instance.SubscriptionId
+            };
+
+            var key = storageClient.StorageAccounts.ListKeys(rgName, storageName).Keys.First();
+
+            CloudBlobClient client = new CloudBlobClient(
+                new Uri($"https://{storageName}.blob.core.windows.net/"),
+                new StorageCredentials(storageName, key.Value));
+
+            CloudBlobContainer container = client.GetContainerReference(name);
+            if(!container.Exists())
+            {
+                return null;
+            }
+
+            var callback = new AuthenticationCallback(async (authority, resource, scope) =>
+            {
+                var credential = new TokenCredentialProvider().TokenCredential.GetToken(
+                    new Azure.Core.TokenRequestContext(new[] { "https://vault.azure.net/.default" }),
+                    new CancellationToken());
+                return credential.Token;
+            });
+            KeyVaultClient keyVaultClient = new KeyVaultClient(callback);
+            var secret = keyVaultClient.GetSecretAsync($"https://{kvName}.vault.azure.net", name).Result;
+            if (secret == null)
+            {
+                throw new Exception($"Cabinet {name} not found.");
+            }
+            var cabinet = new Cabinet();
+            cabinet.Name = name;
+            cabinet.AccessUri = secret.Value;
             return cabinet;
         }
     }

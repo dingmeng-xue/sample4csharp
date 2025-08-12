@@ -5,18 +5,8 @@ platform.Initialize();
 
 var cabinet = platform.CreateCabinet("cabinet1");
 cabinet = platform.GetCabinet("cabinet1");
+Console.WriteLine($"Cabinet {cabinet.Name} exists with access URI: {cabinet.AccessUri}");
 
-Console.WriteLine($"Cabinet {cabinet.Name} created with access URI: {cabinet.AccessUri}");
-
-//platform.DeleteCabinet("cabinet1");
-
-//var keys = storage.GetKeys().ToList();
-//var key = keys[0].Value;
-
-//var secretClient = new SecretClient(new Uri($"https://{kvName}.vault.azure.net"), new DefaultAzureCredential());
-//secretClient.SetSecret("storage-key", key);
-//Console.WriteLine($"Wrote the key of Azure storage account {storageName} into Keyvault.");
-
-// Console.WriteLine($"Deleting resource group {rgName} ...");
-// client.GetDefaultSubscription().GetResourceGroup(rgName).Value.Delete(Azure.WaitUntil.Completed);
-// Console.WriteLine($"Deleted resource group {rgName}");
+cabinet = platform.CreateCabinet("cabinet2");
+cabinet = platform.GetCabinet("cabinet2");
+Console.WriteLine($"Cabinet {cabinet.Name} exists with access URI: {cabinet.AccessUri}");

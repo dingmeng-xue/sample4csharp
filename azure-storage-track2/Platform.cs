@@ -1,16 +1,17 @@
 ﻿using Azure;
 using Azure.Core;
-using Azure.Identity;
 using Azure.ResourceManager;
+using Azure.ResourceManager.Authorization;
+using Azure.ResourceManager.Authorization.Models;
 using Azure.ResourceManager.KeyVault;
 using Azure.ResourceManager.KeyVault.Models;
 using Azure.ResourceManager.Resources;
 using Azure.ResourceManager.Storage;
 using Azure.ResourceManager.Storage.Models;
 using Azure.Security.KeyVault.Secrets;
+using Azure.Storage;
 using Azure.Storage.Blobs;
 using Azure.Storage.Sas;
-using System;
 
 namespace azure_storage_track2
 {
@@ -44,18 +45,18 @@ namespace azure_storage_track2
             SubscriptionResource sub = client.GetSubscriptions().Get(AppConfiguration.Instance.SubscriptionId);
             Console.WriteLine($"Selected subscription {sub.Data.DisplayName}({AppConfiguration.Instance.SubscriptionId})");
 
-            ResourceGroupResource rg = initializeResourceGroup(client);
-            storageAccountResource = initializeStorageAccount(client, rg);
-            keyVaultResource = initializeKeyVault(client, rg);
+            ResourceGroupResource rg = initializeResourceGroup(client.GetDefaultSubscription());
+            storageAccountResource = initializeStorageAccount(rg);
+            keyVaultResource = initializeKeyVault(rg);
         }
 
-        private ResourceGroupResource initializeResourceGroup(ArmClient client)
+        private ResourceGroupResource initializeResourceGroup(SubscriptionResource subscription)
         {
             Console.WriteLine($"Checking resource group {rgName} ...");
             ResourceGroupResource? rg = null;
             try
             {
-                rg = client.GetDefaultSubscription().GetResourceGroup(rgName);
+                rg = subscription.GetResourceGroup(rgName);
             }
             catch (RequestFailedException e)
             {
@@ -69,13 +70,13 @@ namespace azure_storage_track2
             {
                 Console.WriteLine($"Cannot find resource group {rgName}. Creating ...");
                 ResourceGroupData resourceGroupData = new ResourceGroupData(new AzureLocation(location));
-                rg = client.GetDefaultSubscription().GetResourceGroups().CreateOrUpdate(WaitUntil.Completed, rgName, resourceGroupData).Value;
+                rg = subscription.GetResourceGroups().CreateOrUpdate(WaitUntil.Completed, rgName, resourceGroupData).Value;
                 Console.WriteLine($"Created resource group {rgName}");
             }
             return rg;
         }
 
-        private StorageAccountResource initializeStorageAccount(ArmClient client, ResourceGroupResource rg)
+        private StorageAccountResource initializeStorageAccount(ResourceGroupResource rg)
         {
             Console.WriteLine($"Checking storage account {storageName} ...");
             StorageAccountResource? storage = null;
@@ -100,13 +101,13 @@ namespace azure_storage_track2
             return storage;
         }
 
-        private KeyVaultResource initializeKeyVault(ArmClient client, ResourceGroupResource rg)
+        private KeyVaultResource initializeKeyVault(ResourceGroupResource rg)
         {
             Console.WriteLine($"Checking key vault {kvName} ...");
-            KeyVaultResource? kv = null;
+            KeyVaultResource? keyvault = null;
             try
             {
-                kv = rg.GetKeyVault(kvName).Value;
+                keyvault = rg.GetKeyVault(kvName).Value;
             }
             catch (RequestFailedException e)
             {
@@ -116,27 +117,40 @@ namespace azure_storage_track2
                 }
             }
 
-            if (kv == null)
+            if (keyvault == null)
             {
                 Console.WriteLine($"Cannot find Azure key vault {kvName}. Creating ...");
                 var vaultProperties = new KeyVaultProperties(Guid.Parse(AppConfiguration.Instance.TenantId), new KeyVaultSku(KeyVaultSkuFamily.A, KeyVaultSkuName.Standard));
                 vaultProperties.EnableRbacAuthorization = true;
                 vaultProperties.EnableSoftDelete = false;
                 KeyVaultCreateOrUpdateContent parameters = new KeyVaultCreateOrUpdateContent(location, vaultProperties);
-                kv = rg.GetKeyVaults().CreateOrUpdate(WaitUntil.Completed, kvName, parameters).Value;
+                keyvault = rg.GetKeyVaults().CreateOrUpdate(WaitUntil.Completed, kvName, parameters).Value;
                 Console.WriteLine($"Created Azure key vault {kvName}");
+
+                RoleAssignmentCreateOrUpdateContent roleAssignment = new RoleAssignmentCreateOrUpdateContent(
+                    new ResourceIdentifier("/providers/Microsoft.Authorization/roleDefinitions/00482a5a-887f-4fb3-b363-3b7fe8e74483"), 
+                    Guid.Parse(AppTokenCredential.GetCurrentPrincipalOid()));
+                keyvault.GetRoleAssignments().CreateOrUpdate(WaitUntil.Completed, Guid.NewGuid().ToString(), roleAssignment);
+
+                Console.WriteLine($"Assigned Key Vault Secrets User role to current principal in key vault {kvName}");
+
+                Thread.Sleep(10000);
             }
-            return kv;
+
+            return keyvault;
         }
 
         public Cabinet CreateCabinet(String name)
         {
             var key = storageAccountResource.GetKeys().First().Value;
 
+            StorageSharedKeyCredential credential = new StorageSharedKeyCredential(storageName, key);
+
             var blobServiceClient = new BlobServiceClient(
-                new Uri($"https://{storageName}.blob.core.windows.net"), new AppTokenCredential());
+                new Uri($"https://{storageName}.blob.core.windows.net"), credential);
             BlobContainerClient containerClient = blobServiceClient.GetBlobContainerClient(name);
             containerClient.CreateIfNotExists();
+            var a = containerClient.CanGenerateSasUri;
 
             BlobContainerSasPermissions permissions = BlobContainerSasPermissions.Read;
             DateTimeOffset expiresOn = DateTimeOffset.UtcNow.AddHours(+1);
@@ -146,7 +160,8 @@ namespace azure_storage_track2
             };
             sasBuilder.ToSasQueryParameters(new StorageSharedKeyCredential(storageName, key));
 
-            containerClient.GenerateUserDelegationSasUri(permissions, DateTimeOffset.Now.AddDays(1));
+            containerClient.GenerateSasUri(sasBuilder);
+
             var uri = containerClient.GenerateSasUri(BlobContainerSasPermissions.Read, DateTimeOffset.Now.AddDays(1));
 
 

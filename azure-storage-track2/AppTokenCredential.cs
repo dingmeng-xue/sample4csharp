@@ -1,9 +1,4 @@
 ﻿using Azure.Identity;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace azure_storage_track2
 {
@@ -14,6 +9,13 @@ namespace azure_storage_track2
             TenantId = AppConfiguration.Instance.TenantId
         })
         {
+        }
+
+        public static string GetCurrentPrincipalOid()
+        {
+            var token = new AppTokenCredential().GetToken(new Azure.Core.TokenRequestContext(new[] { "https://management.azure.com/.default" }));
+            var jwt = new System.IdentityModel.Tokens.Jwt.JwtSecurityToken(token.Token);
+            return jwt.Claims.First(c => c.Type == "oid").Value;
         }
     }
 }
